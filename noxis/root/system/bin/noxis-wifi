@@ -100,21 +100,35 @@ up() {
   # 1) kernel modules (dependencies come from modules.dep)
   mount_part system_dlkm $SD
   moddirs
-  # cfg80211 (wireless core) lives in system_dlkm on GKI kernels
-  for m in rfkill cfg80211 qrtr qrtr-smd rproc_qcom_common cnss_prealloc cnss_utils cnss_nl wlan_firmware_service cnss_plat_ipc_qmi_svc icnss2; do
+  # 1) base modules (cfg80211 lives in system_dlkm on GKI kernels)
+  for m in rfkill cfg80211 qrtr qrtr-smd rproc_qcom_common cnss_prealloc cnss_utils cnss_nl wlan_firmware_service cnss_plat_ipc_qmi_svc; do
     load_mod $m
   done
-  # 2) wireless processor (WPSS) remoteproc
+  # 2) modem: the Wi-Fi driver reads its MAC address from the modem (DMS service),
+  #    so the modem has to run first – with its storage helpers from the vendor partition
+  mkdir -p /mnt/vendor/persist
+  mountpoint -q /mnt/vendor/persist || mount -t ext4 -o ro /dev/block/by-name/persist /mnt/vendor/persist 2>>$LOG
+  for d in pd-mapper rmt_storage tftp_server pm-service; do
+    [ -x $V/bin/$d ] || { log "  (no $d)"; continue; }
+    pidof $d >/dev/null || { run sh -c "$V/bin/$d >>$LOG 2>&1 &"; log "started $d"; }
+  done
+  sleep 1
+  for rp in /sys/class/remoteproc/*; do
+    n=$(cat $rp/name 2>/dev/null)
+    case "$n" in *mpss*|*modem*)
+      [ "$(cat $rp/state)" = running ] || run sh -c "echo start > $rp/state"
+      log "$n: $(cat $rp/state)";;
+    esac
+  done
+  log "waiting 10 s for the modem services ..."; sleep 10
+  # 3) Wi-Fi platform driver + wireless processor (WPSS) + WLAN host driver
+  load_mod icnss2
   for rp in /sys/class/remoteproc/*; do
     n=$(cat $rp/name 2>/dev/null)
     case "$n" in *wpss*) [ "$(cat $rp/state)" = running ] || run sh -c "echo start > $rp/state"; sleep 2; log "$n: $(cat $rp/state)";; esac
   done
   load_mod qca_cld3_qca6750
-  # the vendor init normally triggers the WLAN host driver start here
   for f in /sys/kernel/boot_wlan/boot_wlan; do [ -e $f ] && { run sh -c "echo 1 > $f"; log "boot_wlan triggered"; }; done
-  # 3) Qualcomm helper daemons from the vendor partition
-  pidof pd-mapper >/dev/null || { run sh -c "$V/bin/pd-mapper >>$LOG 2>&1 &"; }
-  pidof pm-service >/dev/null || { run sh -c "$V/bin/pm-service >>$LOG 2>&1 &"; }
   pidof cnss-daemon >/dev/null || { run sh -c "$V/bin/cnss-daemon -n -l >>$LOG 2>&1 &"; }
   for f in /sys/kernel/cnss/fs_ready /sys/kernel/icnss/fs_ready; do [ -e $f ] && echo 1 > $f; done
   log "loaded: $(grep -oE '^(icnss2|cnss2|qca_cld3_qca6750|wlan|cnss_[a-z_]+|qrtr[a-z_]*|wlan_firmware_service) ' /proc/modules | tr '\n' ' ')"
@@ -123,7 +137,8 @@ up() {
   if ip link show wlan0 >/dev/null 2>&1; then
     run ip link set wlan0 up; log "OK: wlan0 is up"
   else
-    run sh -c "dmesg | grep -iE 'cnss|icnss|wlan|wpss|qca|hdd|firmware' | tail -80"
+    run sh -c "dmesg | grep -iE 'cnss|icnss|wlan|wpss|mpss|modem|qca|hdd|firmware|remoteproc' | grep -v 'DMS QMI connection not established' | tail -100"
+    run sh -c "for r in /sys/class/remoteproc/*; do echo \$(cat \$r/name) \$(cat \$r/state); done"
     log "! wlan0 did not appear – send /tmp/noxis-wifi.log"; return 1
   fi
 }
