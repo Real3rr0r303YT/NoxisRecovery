@@ -10,8 +10,8 @@ Part of <a href="https://github.com/Real3rr0r303YT/NoxisOS">Noxis OS</a> and <a 
 
 <p align="center"><img src="docs/img/overview.png" width="100%"></p>
 
-> **Status: v0.1 test builds.** The first builds are based on OrangeFox 14.1 with Noxis tools (rollback, auto backup).
-> The liquid-glass UI, Wi-Fi and browser shown in the screens below are the design target and come in the next versions.
+> **Status: v0.3 – liquid-glass theme.** OrangeFox 14.1 built from source, with the Noxis glass theme (blurred wallpaper, frosted cards, red accent, Noxis splash) and the `noxis-rollback` tool.
+> The layout is still OrangeFox's. The custom screens below (rollback page, Wi-Fi, browser) are the design target for the next versions.
 > Downloads: **[Releases](https://github.com/Real3rr0r303YT/NoxisRecovery/releases)** · Builds: [GitHub Actions](https://github.com/Real3rr0r303YT/NoxisRecovery/actions)
 
 ## Features (planned)

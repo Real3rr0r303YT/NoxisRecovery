@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['noxis/**', '.github/workflows/build.yml']
+    paths: ['noxis/env.sh', 'noxis/apply.sh', '.github/workflows/build.yml']
 
 permissions:
   contents: write
