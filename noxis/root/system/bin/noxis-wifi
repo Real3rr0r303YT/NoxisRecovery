@@ -137,6 +137,10 @@ up() {
   load_mod qca_cld3_qca6750
   for f in /sys/kernel/boot_wlan/boot_wlan; do [ -e $f ] && { run sh -c "echo 1 > $f"; log "boot_wlan triggered"; }; done
   pidof cnss-daemon >/dev/null || { run sh -c "$V/bin/cnss-daemon -n -l >>$LOG 2>&1 &"; }
+  # qcacld only creates wlan0 when the Wi-Fi HAL switches it on – do that ourselves
+  i=0; while [ $i -lt 30 ] && [ ! -e /dev/wlan ]; do sleep 1; i=$((i+1)); done
+  sleep 3
+  if [ -e /dev/wlan ]; then run sh -c "echo ON > /dev/wlan"; log "driver switched ON"; else log "! /dev/wlan missing"; fi
   for f in /sys/kernel/cnss/fs_ready /sys/kernel/icnss/fs_ready; do [ -e $f ] && echo 1 > $f; done
   log "loaded: $(grep -oE '^(icnss2|cnss2|qca_cld3_qca6750|wlan|cnss_[a-z_]+|qrtr[a-z_]*|wlan_firmware_service) ' /proc/modules | tr '\n' ' ')"
   # 4) wait for wlan0
