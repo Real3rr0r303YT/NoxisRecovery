@@ -107,7 +107,14 @@ for p in sorted(os.listdir(os.path.join(TW, "pages"))):
     def add(m):
         global count
         name, body = m.group(1), m.group(3)
-        if name in OVERLAYS or "dialog_body" in body or "%transparent%" in body or "%power_bg%" in body:
+        # A page is an overlay when it is opened as one, is a dialog, or paints
+        # no opaque background of its own. Testing for "%transparent%" anywhere
+        # in the body is too blunt: full screens use transparent fills for
+        # touch regions, and filemanagerlist - the home screen - was losing the
+        # wallpaper because of it.
+        bg = re.search(r'<background color="([^"]*)"', body)
+        transparent_bg = bg is not None and bg.group(1) in ("%transparent%", "%power_bg%")
+        if name in OVERLAYS or "dialog_body" in body or transparent_bg:
             return m.group(0)
         count += 1
         return m.group(0).replace(m.group(2), m.group(2) + "\n\t\t\t" + WALL, 1)
