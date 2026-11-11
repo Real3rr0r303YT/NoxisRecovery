@@ -162,7 +162,10 @@ supplicant() { # conf – runs in the background, debug output goes to $RUN/wpa.
   [ -x $WPA ] || { mount_part vendor $V; }
   : > $RUN/wpa.out
   echo "+ wpa_supplicant -iwlan0 -Dnl80211 -c $1 -dd" >> $LOG
-  $WPA -iwlan0 -Dnl80211 -c "$1" -dd >> $RUN/wpa.out 2>&1 &
+  # the vendor wpa_supplicant needs the libcrypto (BoringSSL) of the real system partition
+  mount_part system /mnt/nx/system >/dev/null 2>&1
+  SL=/mnt/nx/system/system/lib64; [ -d $SL ] || SL=/mnt/nx/system/lib64
+  LD_LIBRARY_PATH=$V/lib64:$SL:/system/lib64 $WPA -iwlan0 -Dnl80211 -c "$1" -dd >> $RUN/wpa.out 2>&1 &
   sleep 1
 }
 
