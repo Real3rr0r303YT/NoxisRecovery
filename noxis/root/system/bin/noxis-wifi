@@ -115,12 +115,13 @@ up() {
   sleep 1
   for rp in /sys/class/remoteproc/*; do
     n=$(cat $rp/name 2>/dev/null)
-    case "$n" in *mpss*|*modem*)
+    case "$n" in *-mss|*mpss*|*modem*)
       [ "$(cat $rp/state)" = running ] || run sh -c "echo start > $rp/state"
       log "$n: $(cat $rp/state)";;
     esac
   done
-  log "waiting 10 s for the modem services ..."; sleep 10
+  log "waiting 15 s for the modem services ..."; sleep 15
+  run sh -c "dmesg | grep -iE 'remoteproc-mss|remoteproc3' | tail -8"
   # 3) Wi-Fi platform driver + wireless processor (WPSS) + WLAN host driver
   load_mod icnss2
   for rp in /sys/class/remoteproc/*; do
