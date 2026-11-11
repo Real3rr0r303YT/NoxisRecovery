@@ -19,7 +19,7 @@ RUN=/tmp/nxwifi
 mkdir -p $RUN
 
 log() { echo "[noxis-wifi] $*" | tee -a $LOG; }
-run() { echo "+ $*" >> $LOG; "$@" >> $LOG 2>&1; r=$?; [ $r -ne 0 ] && echo "  -> exit $r" >> $LOG; return $r; }
+run() { echo "+ $*" >> $LOG; "$@" >> $LOG 2>&1; _rc=$?; [ $_rc -ne 0 ] && echo "  -> exit $_rc" >> $LOG; return $_rc; }
 
 mount_part() { # name mountpoint
   mkdir -p "$2"
@@ -70,15 +70,16 @@ up() {
     done
   else log "! no modules.dep found"; fi
   # 2) wireless processor (WPSS) remoteproc
-  for r in /sys/class/remoteproc/*; do
-    n=$(cat $r/name 2>/dev/null)
-    case "$n" in *wpss*) [ "$(cat $r/state)" = running ] || run sh -c "echo start > $r/state"; log "$n: $(cat $r/state)";; esac
+  for rp in /sys/class/remoteproc/*; do
+    n=$(cat $rp/name 2>/dev/null)
+    case "$n" in *wpss*) [ "$(cat $rp/state)" = running ] || run sh -c "echo start > $rp/state"; sleep 2; log "$n: $(cat $rp/state)";; esac
   done
   # 3) Qualcomm helper daemons from the vendor partition
   pidof pd-mapper >/dev/null || { run sh -c "$V/bin/pd-mapper >>$LOG 2>&1 &"; }
   pidof pm-service >/dev/null || { run sh -c "$V/bin/pm-service >>$LOG 2>&1 &"; }
   pidof cnss-daemon >/dev/null || { run sh -c "$V/bin/cnss-daemon -n -l >>$LOG 2>&1 &"; }
-  echo 1 > /sys/kernel/cnss/fs_ready 2>/dev/null
+  for f in /sys/kernel/cnss/fs_ready /sys/kernel/icnss/fs_ready; do [ -e $f ] && echo 1 > $f; done
+  log "loaded: $(grep -oE '^(icnss2|cnss2|qca_cld3_qca6750|wlan|cnss_[a-z_]+|qrtr[a-z_]*|wlan_firmware_service) ' /proc/modules | tr '\n' ' ')"
   # 4) wait for wlan0
   i=0; while [ $i -lt 40 ] && ! ip link show wlan0 >/dev/null 2>&1; do sleep 1; i=$((i+1)); done
   if ip link show wlan0 >/dev/null 2>&1; then
