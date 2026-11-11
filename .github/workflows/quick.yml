@@ -1,0 +1,99 @@
+name: Quick Noxis Recovery (repack)
+
+# Fast path: takes the prebuilt OrangeFox image for asteroids by Ubuntuify (GPL-3.0),
+# adds the Noxis tools to its ramdisk and repacks it. Minutes instead of hours.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['noxis/root/**', '.github/workflows/quick.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  repack:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      UPSTREAM: Ubuntuify/device_nothing_asteroids-recovery
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: magiskboot
+        run: |
+          url=$(gh api repos/topjohnwu/Magisk/releases/latest --jq '.assets[]|select(.name|endswith(".apk"))|.browser_download_url' | head -1)
+          curl -sSL "$url" -o magisk.apk
+          unzip -p magisk.apk lib/x86_64/libmagiskboot.so > /usr/local/bin/magiskboot 2>/dev/null || \
+            sudo sh -c "unzip -p magisk.apk lib/x86_64/libmagiskboot.so > /usr/local/bin/magiskboot"
+          sudo chmod +x /usr/local/bin/magiskboot
+          magiskboot 2>&1 | head -3 || true
+
+      - name: Download upstream images (newest 6.1 and 6.6)
+        run: |
+          mkdir -p up
+          gh api "repos/$UPSTREAM/releases?per_page=30" \
+            --jq '.[] | .tag_name as $t | .assets[] | select(.name|endswith(".img")) | "\($t) \(.name) \(.browser_download_url)"' > list.txt
+          cat list.txt
+          for v in 6.1 6.6; do
+            line=$(grep -F "_${v}-" list.txt | head -1)
+            [ -n "$line" ] || { echo "no $v image upstream"; continue; }
+            set -- $line
+            echo "$v -> $1 $2"
+            curl -sSL "$3" -o "up/$v.img"
+            echo "$v $1 $2" >> up/SOURCES
+          done
+          ls -la up
+
+      - name: Repack with Noxis
+        run: |
+          mkdir -p dist
+          for img in up/*.img; do
+            v=$(basename "$img" .img)
+            rm -rf w && mkdir w && cd w
+            magiskboot unpack -h "../$img"
+            ls -la
+            magiskboot cpio ramdisk.cpio "ls -r" | grep -iE "twres/(images|splash)|fox|logo" | head -30 || true
+            magiskboot cpio ramdisk.cpio \
+              "add 0755 system/bin/noxis-rollback ../noxis/root/system/bin/noxis-rollback"
+            printf 'Noxis Recovery v0.1 (quick build)\nbase: %s\nMade by 3rr0r303YT on TikTok - GNU GPL v3\n' "$(grep "^$v " ../up/SOURCES)" > noxis-release
+            magiskboot cpio ramdisk.cpio "add 0644 system/etc/noxis-release noxis-release"
+            magiskboot cpio ramdisk.cpio "ls system/bin/noxis-rollback" 
+            magiskboot repack "../$img" "../dist/noxis-recovery-$v.img"
+            cd ..
+          done
+          cd dist && sha256sum *.img > SHA256SUMS && ls -la && cat SHA256SUMS
+
+      - name: Check repacked images
+        run: |
+          for f in dist/*.img; do
+            rm -rf c && mkdir c && (cd c && magiskboot unpack "../$f" >/dev/null && magiskboot cpio ramdisk.cpio "exists system/bin/noxis-rollback" && echo "$f OK")
+          done
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1-quick${{ github.run_number }}
+          name: Noxis Recovery v0.1 quick (build ${{ github.run_number }})
+          prerelease: true
+          files: |
+            dist/*.img
+            dist/SHA256SUMS
+            up/SOURCES
+          body: |
+            **Quick build:** the prebuilt OrangeFox for asteroids by [Ubuntuify](https://github.com/Ubuntuify/device_nothing_asteroids-recovery) + Noxis tools (`noxis-rollback`). Upstream version: see `SOURCES`.
+
+            | File | For |
+            |---|---|
+            | `noxis-recovery-6.1.img` | stock **Nothing OS** |
+            | `noxis-recovery-6.6.img` | custom ROMs (Noxis OS, crDroid, LineageOS) |
+
+            ```
+            adb reboot bootloader
+            fastboot flash recovery noxis-recovery-6.1.img
+            fastboot reboot recovery
+            ```
+            `fastboot boot` does **not** work. Only the recovery partition is changed.
+
+            In the OrangeFox terminal: `noxis-rollback slot | stock | backup`
+
+            Made by 3rr0r303YT on TikTok · GNU GPL v3
