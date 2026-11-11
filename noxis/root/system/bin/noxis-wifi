@@ -90,6 +90,12 @@ up() {
     for e in "$src"/*; do b=$(basename "$e"); [ -e "$FW/$b" ] || ln -s "$e" "$FW/$b"; done
   done
   echo -n $FW > /sys/module/firmware_class/parameters/path
+  # vendor firmware links point to absolute /vendor/etc/... paths – in recovery /vendor is the
+  # ramdisk, so copy the Wi-Fi config there (WCNSS_qcom_cfg.ini etc.)
+  if [ -d $V/etc/wifi ] && [ ! -e /vendor/etc/wifi/qca6750/WCNSS_qcom_cfg.ini ]; then
+    mkdir -p /vendor/etc/wifi && cp -r $V/etc/wifi/. /vendor/etc/wifi/ && log "copied vendor/etc/wifi"
+  fi
+  run ls -l $V/firmware/wlan/qca_cld/qca6750/
   w=$(find /vendor/firmware_mnt/image $V/firmware -name 'wpss.mdt' 2>/dev/null | head -3 | tr '\n' ' ')
   log "wpss.mdt found at: ${w:-NOWHERE}"
   # the remoteproc asks for qca6750/wpss.mdt – link it if the file sits elsewhere
@@ -138,7 +144,7 @@ up() {
   if ip link show wlan0 >/dev/null 2>&1; then
     run ip link set wlan0 up; log "OK: wlan0 is up"
   else
-    run sh -c "dmesg | grep -iE 'cnss|icnss|wlan|wpss|mpss|modem|qca|hdd|firmware|remoteproc' | grep -v 'DMS QMI connection not established' | tail -100"
+    run sh -c "dmesg | grep -iE 'icnss|wlan|hdd|qca_cld|cfg.ini|DMS MAC|probe|firmware load' | grep -v 'DMS QMI connection not established' | tail -60"
     run sh -c "for r in /sys/class/remoteproc/*; do echo \$(cat \$r/name) \$(cat \$r/state); done"
     log "! wlan0 did not appear – send /tmp/noxis-wifi.log"; return 1
   fi
