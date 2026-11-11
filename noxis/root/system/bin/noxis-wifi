@@ -1,0 +1,155 @@
+#!/system/bin/sh
+# Noxis Recovery – Wi-Fi for the Nothing Phone (3a) (qca6750 / icnss2), EXPERIMENTAL
+#
+#   noxis-wifi probe                 collect hardware info only (changes nothing)
+#   noxis-wifi up                    load the Wi-Fi driver + firmware services
+#   noxis-wifi scan                  list networks
+#   noxis-wifi connect SSID [PASS]   connect (WPA2/WPA3-transition or open) + DHCP
+#   noxis-wifi status | down
+#
+# Everything is logged to /tmp/noxis-wifi.log – send that file when something fails:
+#   adb pull /tmp/noxis-wifi.log
+LOG=/tmp/noxis-wifi.log
+BB=/system/bin/nxbusybox
+ip() { $BB ip "$@"; }
+SLOT=$(getprop ro.boot.slot_suffix)
+V=/mnt/nx/vendor
+D=/mnt/nx/vendor_dlkm
+RUN=/tmp/nxwifi
+mkdir -p $RUN
+
+log() { echo "[noxis-wifi] $*" | tee -a $LOG; }
+run() { echo "+ $*" >> $LOG; "$@" >> $LOG 2>&1; r=$?; [ $r -ne 0 ] && echo "  -> exit $r" >> $LOG; return $r; }
+
+mount_part() { # name mountpoint
+  mkdir -p "$2"
+  mountpoint -q "$2" && return 0
+  for dev in /dev/block/mapper/$1$SLOT /dev/block/mapper/$1 /dev/block/by-name/$1$SLOT; do
+    [ -e "$dev" ] || continue
+    for fs in erofs ext4; do
+      mount -t $fs -o ro "$dev" "$2" 2>>$LOG && { log "mounted $dev ($fs) -> $2"; return 0; }
+    done
+  done
+  log "! could not mount $1 (dynamic partitions not mapped? open Mount in OrangeFox once)"
+  return 1
+}
+
+mods_dir() { for d in $D/lib/modules /vendor_dlkm/lib/modules $V/lib/modules; do [ -f $d/modules.dep ] && { echo $d; return; }; done; }
+
+probe() {
+  log "=== probe $(date) slot=$SLOT kernel=$(uname -r)"
+  mount_part vendor $V; mount_part vendor_dlkm $D
+  run ls /sys/class/remoteproc
+  for r in /sys/class/remoteproc/*; do echo "$r: $(cat $r/name 2>/dev/null) $(cat $r/state 2>/dev/null) fw=$(cat $r/firmware 2>/dev/null)" >> $LOG; done
+  run lsmod
+  M=$(mods_dir); log "modules dir: ${M:-none}"
+  [ -n "$M" ] && run sh -c "ls $M | grep -iE 'cnss|wlan|qca|icnss|qrtr|rproc|ipc' "
+  run ls $V/bin/cnss-daemon $V/bin/pd-mapper $V/bin/pm-service $V/bin/hw/wpa_supplicant $V/bin/qrtr-ns
+  run sh -c "ls $V/firmware/wlan/qca_cld/qca6750/ /vendor/firmware_mnt/image | grep -iE 'wpss|bdwlan|regdb|wlan|qca|\\.ini'"
+  run sh -c "grep -rhE 'cnss|wpss|wlan' $V/etc/init/*.rc $V/etc/init/hw/*.rc | head -60"
+  run cat /sys/module/firmware_class/parameters/path
+  run ls /sys/kernel/cnss /sys/bus/platform/drivers | head -5
+  run $BB ip link
+  log "=== probe done – send /tmp/noxis-wifi.log"
+}
+
+up() {
+  log "=== up $(date)"
+  mount_part vendor $V || return 1
+  mount_part vendor_dlkm $D
+  mountpoint -q /vendor/firmware_mnt || mount -t vfat -o ro /dev/block/by-name/modem$SLOT /vendor/firmware_mnt 2>>$LOG
+  # firmware: the kernel also looks in this extra path (vendor partition firmware)
+  echo -n $V/firmware > /sys/module/firmware_class/parameters/path
+  export LD_LIBRARY_PATH=$V/lib64:/vendor/lib64:/system/lib64
+  # 1) kernel modules (dependencies come from modules.dep)
+  M=$(mods_dir)
+  if [ -n "$M" ]; then
+    for m in qrtr qrtr-smd rproc_qcom_common cnss_prealloc cnss_utils cnss_nl wlan_firmware_service cnss_plat_ipc_qmi_svc icnss2 qca_cld3_qca6750; do
+      grep -q "^${m//-/_} " /proc/modules && continue
+      run modprobe -d "$M" "$m" || run insmod "$M/$m.ko"
+    done
+  else log "! no modules.dep found"; fi
+  # 2) wireless processor (WPSS) remoteproc
+  for r in /sys/class/remoteproc/*; do
+    n=$(cat $r/name 2>/dev/null)
+    case "$n" in *wpss*) [ "$(cat $r/state)" = running ] || run sh -c "echo start > $r/state"; log "$n: $(cat $r/state)";; esac
+  done
+  # 3) Qualcomm helper daemons from the vendor partition
+  pidof pd-mapper >/dev/null || { run sh -c "$V/bin/pd-mapper >>$LOG 2>&1 &"; }
+  pidof pm-service >/dev/null || { run sh -c "$V/bin/pm-service >>$LOG 2>&1 &"; }
+  pidof cnss-daemon >/dev/null || { run sh -c "$V/bin/cnss-daemon -n -l >>$LOG 2>&1 &"; }
+  echo 1 > /sys/kernel/cnss/fs_ready 2>/dev/null
+  # 4) wait for wlan0
+  i=0; while [ $i -lt 40 ] && ! ip link show wlan0 >/dev/null 2>&1; do sleep 1; i=$((i+1)); done
+  if ip link show wlan0 >/dev/null 2>&1; then
+    run ip link set wlan0 up; log "OK: wlan0 is up"
+  else
+    run sh -c "dmesg | grep -iE 'cnss|icnss|wlan|wpss|qca|hdd|firmware' | tail -80"
+    log "! wlan0 did not appear – send /tmp/noxis-wifi.log"; return 1
+  fi
+}
+
+supplicant() { # conf
+  pkill -f "wpa_supplicant.*$RUN" 2>/dev/null; sleep 1
+  run $V/bin/hw/wpa_supplicant -B -iwlan0 -Dnl80211 -c "$1" -P $RUN/wpa.pid
+  sleep 2
+}
+wpacli() { [ -x $V/bin/hw/wpa_cli ] && $V/bin/hw/wpa_cli -p $RUN/sock -i wlan0 "$@" || $V/bin/wpa_cli -p $RUN/sock -i wlan0 "$@"; }
+
+scan() {
+  ip link show wlan0 >/dev/null 2>&1 || up || return 1
+  printf 'ctrl_interface=%s/sock\nupdate_config=0\n' $RUN > $RUN/scan.conf
+  supplicant $RUN/scan.conf
+  wpacli scan >/dev/null 2>&1; sleep 5
+  wpacli scan_results 2>>$LOG | tee -a $LOG 
+}
+
+connect() {
+  [ -n "$1" ] || { echo "usage: noxis-wifi connect SSID [PASS]"; return 1; }
+  ip link show wlan0 >/dev/null 2>&1 || up || return 1
+  ssid=$(printf '%s' "$1" | sed 's/"/\\"/g'); pass=$(printf '%s' "$2" | sed 's/"/\\"/g')
+  {
+    echo "ctrl_interface=$RUN/sock"; echo "network={"; echo "  ssid=\"$ssid\""; echo "  scan_ssid=1"
+    if [ -n "$2" ]; then echo "  psk=\"$pass\""; echo "  key_mgmt=WPA-PSK SAE"; echo "  ieee80211w=1"; else echo "  key_mgmt=NONE"; fi
+    echo "}"
+  } > $RUN/wpa.conf
+  chmod 600 $RUN/wpa.conf
+  supplicant $RUN/wpa.conf
+  i=0; while [ $i -lt 25 ]; do
+    st=$(wpacli status 2>/dev/null | grep wpa_state); [ "$st" = "wpa_state=COMPLETED" ] && break
+    sleep 1; i=$((i+1))
+  done
+  log "${st:-no state}"
+  [ "$st" = "wpa_state=COMPLETED" ] || { log "! not associated (wrong password? 5 GHz/WPA3-only?)"; return 1; }
+  dhcp
+}
+
+dhcp() {
+  [ -x $BB ] || { log "! nxbusybox missing – set an IP by hand"; return 1; }
+  cat > $RUN/udhcpc.sh <<'EOF'
+#!/system/bin/sh
+case "$1" in
+  bound|renew)
+    /system/bin/nxbusybox ip addr flush dev "$interface"
+    /system/bin/nxbusybox ip addr add "$ip/${mask:-24}" dev "$interface"
+    for r in $router; do /system/bin/nxbusybox ip route replace default via "$r" dev "$interface"; break; done
+    : > /etc/resolv.conf
+    for d in ${dns:-1.1.1.1}; do echo "nameserver $d" >> /etc/resolv.conf; done ;;
+esac
+EOF
+  chmod 755 $RUN/udhcpc.sh
+  run $BB udhcpc -i wlan0 -s $RUN/udhcpc.sh -n -q -t 8
+  grep -q nameserver /etc/resolv.conf 2>/dev/null || echo "nameserver 9.9.9.9" > /etc/resolv.conf
+  log "IP: $(ip -4 addr show wlan0 | grep inet)"
+  if $BB wget -q -O /dev/null -T 8 https://github.com 2>>$LOG; then log "OK: internet works"; else log "! no internet (DNS/route) – see log"; fi
+}
+
+case "${1:-}" in
+  probe) probe ;;
+  up) up ;;
+  scan) scan ;;
+  connect) shift; connect "$@" ;;
+  status) ip addr show wlan0; wpacli status 2>/dev/null; cat /etc/resolv.conf 2>/dev/null ;;
+  down) pkill -f "wpa_supplicant.*$RUN"; ip link set wlan0 down; log "down" ;;
+  *) sed -n '2,12p' "$0" ;;
+esac
