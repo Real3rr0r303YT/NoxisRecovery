@@ -62,8 +62,14 @@ for k, v in VARS.items():
     if n == 0:
         s = s.replace("</variables>", f'\t\t<variable name="{k}" value="{v}"/>\n\t</variables>', 1)
 wr("themes/style.xml", s)
-# keep the Dark choice in the theme picker identical to Noxis
-wr("themes/styles/Dark.xml", s)
+# Every entry in the theme picker has to be Noxis. Only Dark used to be
+# overwritten, so picking Light, Cream, Gray or Black dropped the recovery
+# back to stock OrangeFox - cream background, orange accent, dark text on the
+# dark Noxis wallpaper, unreadable. The picker keeps its entries, they just
+# all resolve to the Noxis style.
+for _style in os.listdir(os.path.join(TW, "themes", "styles")):
+    if _style.endswith(".xml"):
+        wr("themes/styles/" + _style, s)
 
 # ---------------------------------------------------------------- accent
 a = rd("themes/accent.xml")
