@@ -42,7 +42,13 @@ jobs:
         run: |
           sudo apt-get update -qq
           git clone --depth 1 https://gitlab.com/OrangeFox/misc/scripts /tmp/fox-scripts
-          sudo bash /tmp/fox-scripts/setup/android_build_env.sh
+          sudo bash /tmp/fox-scripts/setup/android_build_env.sh || true
+          # the setup script can stop half-way on flaky mirrors – make sure the essentials exist
+          for i in 1 2 3; do
+            sudo apt-get install -y -q -o Acquire::Retries=5 ccache lz4 zip unzip rsync bc bison flex libssl-dev python3 python-is-python3 git-lfs && break
+            sudo apt-get update -qq; sleep 10
+          done
+          command -v ccache
           sudo mkdir -p /mnt/ccache && sudo chown "$USER" /mnt/ccache
           df -h /
 
@@ -71,6 +77,7 @@ jobs:
           export FOX_BUILD_DEVICE=Asteroids
           export FOX_VARIANT=${{ matrix.kernel }}
           source "$GITHUB_WORKSPACE/noxis/env.sh"
+          unset CCACHE_EXEC
           lunch fox_Asteroids-ap2a-eng || exit 1
           set -e
           mka adbd recoveryimage 2>&1 | tee build.log
