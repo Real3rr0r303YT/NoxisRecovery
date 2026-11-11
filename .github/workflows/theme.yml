@@ -13,7 +13,7 @@ permissions:
 
 env:
   BASE_TAG: v0.1-build2
-  VERSION: v0.3.1
+  VERSION: v0.3.2
   ALPINE: v3.22
 
 jobs:
@@ -39,6 +39,12 @@ jobs:
           install -m755 bb/bin/busybox.static noxis/root/system/bin/nxbusybox
           file noxis/root/system/bin/nxbusybox
           echo "busybox-static $ver (Alpine $ALPINE, GPL-2.0) – source: https://git.alpinelinux.org/aports/tree/main/busybox" > noxis/root/system/etc/nxbusybox.SOURCE 2>/dev/null || { mkdir -p noxis/root/system/etc; echo "busybox-static $ver (Alpine $ALPINE, GPL-2.0)" > noxis/root/system/etc/nxbusybox.SOURCE; }
+      - name: wpa_supplicant from Alpine (musl) for Wi-Fi in recovery
+        run: |
+          python3 noxis/tools/alpine-bundle.py "$ALPINE" noxis/root/system/nx wpa_supplicant | tee noxis/root/system/nx/PACKAGES
+          rm -rf noxis/root/system/nx/usr/share noxis/root/system/nx/etc/init.d noxis/root/system/nx/var
+          ls -la noxis/root/system/nx/lib noxis/root/system/nx/sbin noxis/root/system/nx/usr/sbin 2>/dev/null | head -40
+          du -sh noxis/root/system/nx
       - name: Base images
         run: gh release download "$BASE_TAG" -p 'noxis-recovery-6.?.img' -D base
       - name: Repack with the Noxis theme
@@ -51,7 +57,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.VERSION }}-glass${{ github.run_number }}
-          name: Noxis Recovery ${{ env.VERSION }} – liquid glass + Wi-Fi test (build ${{ github.run_number }})
+          name: Noxis Recovery ${{ env.VERSION }} – liquid glass + Wi-Fi (build ${{ github.run_number }})
           prerelease: true
           files: |
             dist/*.img

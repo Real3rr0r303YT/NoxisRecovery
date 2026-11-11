@@ -1,0 +1,6 @@
+#!/system/bin/sh
+# wpa_supplicant from Alpine Linux (musl), bundled in /system/nx – the vendor one needs Android's full system
+R=/system/nx
+unset LD_LIBRARY_PATH
+for b in $R/sbin/wpa_supplicant $R/usr/sbin/wpa_supplicant; do [ -x $b ] && exec $R/lib/ld-musl-aarch64.so.1 --library-path $R/lib:$R/usr/lib $b "$@"; done
+echo "nx-wpa_supplicant: not bundled" >&2; exit 1
