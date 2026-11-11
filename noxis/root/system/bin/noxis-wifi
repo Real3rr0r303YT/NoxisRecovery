@@ -81,6 +81,7 @@ probe() {
 
 up() {
   log "=== up $(date)"
+  if [ -e /sys/class/net/wlan0 ]; then run ifconfig wlan0 up; log "OK: wlan0 is already up"; return 0; fi
   mount_part vendor $V || return 1
   mount_part vendor_dlkm $D
   mountpoint -q /vendor/firmware_mnt || mount -t vfat -o ro /dev/block/by-name/modem$SLOT /vendor/firmware_mnt 2>>$LOG
@@ -88,7 +89,7 @@ up() {
   FW=/tmp/nxfw; mkdir -p $FW
   for src in /vendor/firmware_mnt/image $V/firmware /vendor/firmware; do
     [ -d "$src" ] || continue
-    for e in "$src"/*; do b=$(basename "$e"); [ -e "$FW/$b" ] || ln -s "$e" "$FW/$b"; done
+    for e in "$src"/*; do b=$(basename "$e"); [ -e "$FW/$b" ] || [ -L "$FW/$b" ] || ln -s "$e" "$FW/$b" 2>/dev/null; done
   done
   echo -n $FW > /sys/module/firmware_class/parameters/path
   # vendor firmware links point to absolute /vendor/etc/... paths – in recovery /vendor is the
@@ -145,9 +146,9 @@ up() {
   for f in /sys/kernel/cnss/fs_ready /sys/kernel/icnss/fs_ready; do [ -e $f ] && echo 1 > $f; done
   log "loaded: $(grep -oE '^(icnss2|cnss2|qca_cld3_qca6750|wlan|cnss_[a-z_]+|qrtr[a-z_]*|wlan_firmware_service) ' /proc/modules | tr '\n' ' ')"
   # 4) wait for wlan0
-  i=0; while [ $i -lt 40 ] && ! ip link show wlan0 >/dev/null 2>&1; do sleep 1; i=$((i+1)); done
-  if ip link show wlan0 >/dev/null 2>&1; then
-    run ip link set wlan0 up; log "OK: wlan0 is up"
+  i=0; while [ $i -lt 40 ] && ! [ -e /sys/class/net/wlan0 ]; do sleep 1; i=$((i+1)); done
+  if [ -e /sys/class/net/wlan0 ]; then
+    run ifconfig wlan0 up; log "OK: wlan0 is up"
   else
     run sh -c "dmesg | grep -iE 'icnss|wlan|hdd|qca_cld|cfg.ini|DMS MAC|probe|firmware load' | grep -v 'DMS QMI connection not established' | tail -60"
     run sh -c "for r in /sys/class/remoteproc/*; do echo \$(cat \$r/name) \$(cat \$r/state); done"
@@ -166,7 +167,7 @@ supplicant() { # conf – runs in the background, debug output goes to $RUN/wpa.
 }
 
 scan() {
-  ip link show wlan0 >/dev/null 2>&1 || up || return 1
+  [ -e /sys/class/net/wlan0 ] || up || return 1
   # a dummy network makes wpa_supplicant scan; results come from its debug output (no wpa_cli in recovery)
   printf 'ctrl_interface=%s/sock\nap_scan=1\nnetwork={\n  ssid="noxis-scan-dummy-%s"\n  key_mgmt=NONE\n  scan_ssid=0\n}\n' $RUN $$ > $RUN/scan.conf
   supplicant $RUN/scan.conf
@@ -182,7 +183,7 @@ scan() {
 
 connect() {
   [ -n "$1" ] || { echo "usage: noxis-wifi connect SSID [PASS]"; return 1; }
-  ip link show wlan0 >/dev/null 2>&1 || up || return 1
+  [ -e /sys/class/net/wlan0 ] || up || return 1
   ssid=$(printf '%s' "$1" | sed 's/"/\\"/g'); pass=$(printf '%s' "$2" | sed 's/"/\\"/g')
   {
     echo "ctrl_interface=$RUN/sock"; echo "network={"; echo "  ssid=\"$ssid\""; echo "  scan_ssid=1"
@@ -230,7 +231,7 @@ case "${1:-}" in
   up) up ;;
   scan) scan ;;
   connect) shift; connect "$@" ;;
-  status) ip addr show wlan0; grep -E "CTRL-EVENT-(CONNECTED|DISCONNECTED)" $RUN/wpa.out 2>/dev/null | tail -2; cat /etc/resolv.conf 2>/dev/null ;;
-  down) pkill -f "wpa_supplicant.*$RUN"; ip link set wlan0 down; log "down" ;;
+  status) ifconfig wlan0; grep -E "CTRL-EVENT-(CONNECTED|DISCONNECTED)" $RUN/wpa.out 2>/dev/null | tail -2; cat /etc/resolv.conf 2>/dev/null ;;
+  down) pkill -f "wpa_supplicant.*$RUN"; ifconfig wlan0 down; log "down" ;;
   *) sed -n '2,12p' "$0" ;;
 esac
