@@ -21,20 +21,22 @@ Part of <a href="https://github.com/Real3rr0r303YT/NoxisOS">Noxis OS</a> and <a 
 | **Rollback** | Go back to a working system: switch the A/B slot, flash stock Nothing OS from `/sdcard/Noxis/stock`, restore the last Noxis backup or boot Noxis Linux |
 | **Auto backup** | `boot`, `init_boot`, `vendor_boot` and `dtbo` are backed up before every flash or rollback |
 | **Safe OTA install** | The inactive slot is flashed; the active slot stays bootable until the install succeeds |
-| **Emergency browser** | An offline help browser (`noxis://notfall`) with recovery guides, logs and QR codes for downloading stock firmware on another device |
+| **Wi-Fi** | Connect to WPA2/WPA3 networks in recovery (qca6750 driver, firmware loaded from the phone's own partitions) |
+| **Browser** | Lightweight web browser in recovery: open GitHub releases, download ROMs and firmware to `/sdcard/Noxis/download` with SHA-256 check |
+| **Emergency pages** | Built-in offline help (`noxis://notfall`) with guides, logs and QR codes, which also work without Wi-Fi |
 | **Decryption** | Unlock `/data` with your PIN |
 | **Tools** | File manager, MTP, ADB sideload, terminal |
 | **Languages** | Deutsch, English, Türkçe, Français, Български, Русский, Українська |
 
-The emergency browser is **offline**: the 3a's Wi-Fi does not work in recovery mode, so it shows built-in pages and QR codes instead of loading websites.
+Wi-Fi in recovery is the hardest part: the Qualcomm Wi-Fi chip needs its kernel modules, firmware and helper daemons, which normally only run in Android. It will be marked **experimental** until it works on a real device. The browser renders normal web pages; heavy JavaScript sites (YouTube, web apps) are not the goal.
 
 ## Screens
 
-| Unlock | Home | Rollback | Emergency | Install |
-|---|---|---|---|---|
-| <img src="docs/img/unlock.jpg"> | <img src="docs/img/home.jpg"> | <img src="docs/img/rollback.jpg"> | <img src="docs/img/browser.jpg"> | <img src="docs/img/install.jpg"> |
+| Unlock | Home | Wi-Fi | Browser | Rollback | Install |
+|---|---|---|---|---|---|
+| <img src="docs/img/unlock.jpg"> | <img src="docs/img/home.jpg"> | <img src="docs/img/wifi.jpg"> | <img src="docs/img/browser.jpg"> | <img src="docs/img/rollback.jpg"> | <img src="docs/img/install.jpg"> |
 
-The mockups are made from [`design/mock.html`](design/mock.html). Open `mock.html#home`, `#rollback`, `#browser`, `#unlock` or `#install` in a browser.
+The mockups are made from [`design/mock.html`](design/mock.html). Open `mock.html#home`, `#wifi`, `#browser`, `#rollback`, `#unlock` or `#install` in a browser.
 
 ## Testing (once a build exists)
 
