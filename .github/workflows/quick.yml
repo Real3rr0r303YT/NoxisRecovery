@@ -4,9 +4,6 @@ name: Quick Noxis Recovery (repack)
 # adds the Noxis tools to its ramdisk and repacks it. Minutes instead of hours.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['noxis/root/**', '.github/workflows/quick.yml']
 
 permissions:
   contents: write
