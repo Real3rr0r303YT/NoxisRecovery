@@ -1,0 +1,137 @@
+name: Build Noxis Recovery
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['noxis/**', '.github/workflows/build.yml']
+
+permissions:
+  contents: write
+
+env:
+  # OrangeFox recovery tree for asteroids by Ubuntuify (GPL-3.0), pinned
+  TREE_URL: https://github.com/Ubuntuify/device_nothing_asteroids-recovery
+  TREE_COMMIT: 322f51a
+  DEVICE_PATH: device/nothing/Asteroids
+  FOX_BRANCH: '14.1'
+
+jobs:
+  build:
+    name: Build (kernel ${{ matrix.kernel }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kernel: '6.1'   # stock Nothing OS
+          - kernel: '6.6'   # custom ROMs (Noxis OS / crDroid / LineageOS)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: rokibhasansagar/slimhub_actions@main
+
+      - name: Swap
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 24
+
+      - name: Build environment
+        run: |
+          sudo apt-get update -qq
+          git clone --depth 1 https://gitlab.com/OrangeFox/misc/scripts /tmp/fox-scripts
+          sudo bash /tmp/fox-scripts/setup/android_build_env.sh
+          sudo mkdir -p /mnt/ccache && sudo chown "$USER" /mnt/ccache
+          df -h /
+
+      - name: Sync OrangeFox ${{ env.FOX_BRANCH }}
+        run: |
+          git config --global user.name "Real3rr0r303YT"
+          git config --global user.email "Real3rr0r303YT@users.noreply.github.com"
+          git clone --depth 1 https://gitlab.com/OrangeFox/sync.git /tmp/fox-sync
+          cd /tmp/fox-sync
+          ./orangefox_sync.sh --branch "$FOX_BRANCH" --path "$HOME/fox"
+          df -h /
+
+      - name: Device tree + Noxis overlay
+        run: |
+          cd "$HOME/fox"
+          git clone "$TREE_URL" "$DEVICE_PATH"
+          git -C "$DEVICE_PATH" checkout -q "$TREE_COMMIT"
+          bash "$GITHUB_WORKSPACE/noxis/apply.sh" "$HOME/fox" "$DEVICE_PATH"
+
+      - name: Build recovery
+        run: |
+          cd "$HOME/fox"
+          set +eu
+          source build/envsetup.sh
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export FOX_BUILD_DEVICE=Asteroids
+          export FOX_VARIANT=${{ matrix.kernel }}
+          source "$GITHUB_WORKSPACE/noxis/env.sh"
+          lunch fox_Asteroids-ap2a-eng || exit 1
+          set -e
+          mka adbd recoveryimage 2>&1 | tee build.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Collect
+        run: |
+          OUT="$HOME/fox/out/target/product/Asteroids"
+          ls -la "$OUT" | grep -iE "img|zip" || true
+          mkdir -p dist
+          img=$(ls "$OUT"/OrangeFox*.img 2>/dev/null | head -1)
+          [ -n "$img" ] || img="$OUT/recovery.img"
+          test -s "$img"
+          cp "$img" "dist/noxis-recovery-${{ matrix.kernel }}.img"
+          zip=$(ls "$OUT"/OrangeFox*.zip 2>/dev/null | head -1)
+          [ -n "$zip" ] && cp "$zip" "dist/noxis-recovery-${{ matrix.kernel }}-installer.zip" || true
+          (cd dist && sha256sum * > SHA256SUMS-${{ matrix.kernel }})
+          ls -la dist
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ matrix.kernel }}
+          path: ~/fox/build.log
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: noxis-recovery-${{ matrix.kernel }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Combine checksums
+        run: cd dist && cat SHA256SUMS-* > SHA256SUMS && rm SHA256SUMS-* && ls -la
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1-build${{ github.run_number }}
+          name: Noxis Recovery v0.1 (build ${{ github.run_number }})
+          prerelease: true
+          files: dist/*
+          body: |
+            **Noxis Recovery v0.1 – first test build.** Based on OrangeFox 14.1 and the asteroids tree by Ubuntuify.
+
+            | File | For |
+            |---|---|
+            | `noxis-recovery-6.1.img` | stock **Nothing OS** |
+            | `noxis-recovery-6.6.img` | custom ROMs (Noxis OS, crDroid, LineageOS) |
+
+            ```
+            adb reboot bootloader
+            fastboot flash recovery noxis-recovery-6.1.img
+            fastboot reboot recovery
+            ```
+            `fastboot boot` does **not** work with this recovery. Only the recovery partition is changed; Android still boots normally.
+
+            Made by 3rr0r303YT on TikTok · GNU GPL v3

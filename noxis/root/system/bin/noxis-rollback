@@ -1,0 +1,43 @@
+#!/system/bin/sh
+# Noxis Rollback – run in the OrangeFox terminal.
+#   noxis-rollback slot    -> switch to the other A/B slot (previous system)
+#   noxis-rollback stock   -> flash stock images from /sdcard/Noxis/stock/*.img into the current slot
+#   noxis-rollback backup  -> only back up boot partitions to /sdcard/Noxis/backup/<date>
+set -u
+BACKUP_PARTS="boot init_boot vendor_boot dtbo vbmeta"
+STOCK=/sdcard/Noxis/stock
+
+slot_suffix() { getprop ro.boot.slot_suffix; }
+other_slot() { [ "$(slot_suffix)" = "_a" ] && echo 1 || echo 0; }
+
+backup() {
+  d=/sdcard/Noxis/backup/$(date +%Y%m%d-%H%M%S)
+  mkdir -p "$d" || { echo "! /sdcard not mounted (decrypt first)"; exit 1; }
+  for p in $BACKUP_PARTS; do
+    blk=/dev/block/by-name/$p$(slot_suffix)
+    [ -e "$blk" ] && dd if="$blk" of="$d/$p.img" bs=4M 2>/dev/null && echo "  saved $p"
+  done
+  echo "Backup: $d"
+}
+
+case "${1:-}" in
+  slot)
+    s=$(other_slot)
+    echo "Switching to slot $([ $s = 1 ] && echo b || echo a) ..."
+    bootctl set-active-boot-slot "$s" && echo "Done. Reboot to system." ;;
+  stock)
+    [ -d "$STOCK" ] || { echo "! put stock *.img files into $STOCK"; exit 1; }
+    backup
+    for img in "$STOCK"/*.img; do
+      p=$(basename "$img" .img)
+      blk=/dev/block/by-name/$p$(slot_suffix)
+      if [ -e "$blk" ]; then
+        echo "flash $p$(slot_suffix)"; dd if="$img" of="$blk" bs=4M 2>/dev/null || echo "! failed: $p"
+      else
+        echo "skip $p (no partition / dynamic – flash super images in fastbootd)"
+      fi
+    done
+    echo "Done. Reboot to system." ;;
+  backup) backup ;;
+  *) echo "usage: noxis-rollback slot|stock|backup" ;;
+esac

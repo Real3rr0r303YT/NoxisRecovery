@@ -10,8 +10,9 @@ Part of <a href="https://github.com/Real3rr0r303YT/NoxisOS">Noxis OS</a> and <a 
 
 <p align="center"><img src="docs/img/overview.png" width="100%"></p>
 
-> **Status: design phase.** The screens above are design mockups. There is no `recovery.img` release yet.
-> Never flash an untested recovery. The first builds will be tested with `fastboot boot` only, which does not change anything on the phone.
+> **Status: v0.1 test builds.** The first builds are based on OrangeFox 14.1 with Noxis tools (rollback, auto backup).
+> The liquid-glass UI, Wi-Fi and browser shown in the screens below are the design target and come in the next versions.
+> Downloads: **[Releases](https://github.com/Real3rr0r303YT/NoxisRecovery/releases)** · Builds: [GitHub Actions](https://github.com/Real3rr0r303YT/NoxisRecovery/actions)
 
 ## Features (planned)
 
@@ -32,26 +33,53 @@ Wi-Fi in recovery is the hardest part: the Qualcomm Wi-Fi chip needs its kernel 
 
 ## Screens
 
-| Unlock | Home | Wi-Fi | Browser | Rollback | Install |
-|---|---|---|---|---|---|
-| <img src="docs/img/unlock.jpg"> | <img src="docs/img/home.jpg"> | <img src="docs/img/wifi.jpg"> | <img src="docs/img/browser.jpg"> | <img src="docs/img/rollback.jpg"> | <img src="docs/img/install.jpg"> |
+<p align="center">
+<img src="docs/img/unlock.jpg" width="32%"> <img src="docs/img/home.jpg" width="32%"> <img src="docs/img/wifi.jpg" width="32%">
+</p>
+<p align="center">
+<img src="docs/img/browser.jpg" width="32%"> <img src="docs/img/rollback.jpg" width="32%"> <img src="docs/img/install.jpg" width="32%">
+</p>
 
 The mockups are made from [`design/mock.html`](design/mock.html). Open `mock.html#home`, `#wifi`, `#browser`, `#rollback`, `#unlock` or `#install` in a browser.
 
-## Testing (once a build exists)
+## Install
+
+| File | For |
+|---|---|
+| `noxis-recovery-6.1.img` | stock **Nothing OS** |
+| `noxis-recovery-6.6.img` | custom ROMs (Noxis OS, crDroid, LineageOS) |
 
 ```bash
 adb reboot bootloader
-fastboot boot noxis-recovery.img   # temporary, nothing is flashed
+fastboot flash recovery noxis-recovery-6.1.img
+fastboot reboot recovery
 ```
 
+`fastboot boot` does not work with this recovery. Flashing only changes the recovery partition; Android still boots normally.
 Do not relock the bootloader with a custom recovery or ROM installed.
+
+### Rollback (v0.1, in the OrangeFox terminal)
+
+```bash
+noxis-rollback slot     # switch to the other A/B slot (previous system)
+noxis-rollback stock    # flash stock *.img from /sdcard/Noxis/stock (backs up first)
+noxis-rollback backup   # back up boot, init_boot, vendor_boot, dtbo, vbmeta
+```
+
+## Building
+
+GitHub Actions builds both variants on every push to `noxis/` ([workflow](.github/workflows/build.yml)):
+OrangeFox `fox_14.1` + the asteroids recovery tree + the Noxis overlay in [`noxis/`](noxis).
 
 ## Support
 
 If you like the project: ☕ **[Buy me a coffee](https://buymeacoffee.com/3rr0r303YT)**
 
 ## Credits
+
+- [OrangeFox Recovery Project](https://gitlab.com/OrangeFox) and [TWRP](https://github.com/TeamWin)
+- [Ubuntuify](https://github.com/Ubuntuify/device_nothing_asteroids-recovery) for the asteroids OrangeFox device tree
+
 
 Made by **[3rr0r303YT on TikTok](https://www.tiktok.com/@3rr0r303yt)** · GitHub [Real3rr0r303YT](https://github.com/Real3rr0r303YT)
 
