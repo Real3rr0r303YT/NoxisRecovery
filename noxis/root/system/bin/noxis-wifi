@@ -222,7 +222,7 @@ EOF
   chmod 755 $RUN/udhcpc.sh
   run $BB udhcpc -i wlan0 -s $RUN/udhcpc.sh -n -q -t 8
   grep -q nameserver /etc/resolv.conf 2>/dev/null || echo "nameserver 9.9.9.9" > /etc/resolv.conf
-  log "IP: $(ip -4 addr show wlan0 | grep inet)"
+  log "IP: $(ifconfig wlan0 | grep -i "inet ")"
   if $BB wget -q -O /dev/null -T 8 https://github.com 2>>$LOG; then log "OK: internet works"; else log "! no internet (DNS/route) – see log"; fi
 }
 
