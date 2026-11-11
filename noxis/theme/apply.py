@@ -71,6 +71,16 @@ for _style in os.listdir(os.path.join(TW, "themes", "styles")):
     if _style.endswith(".xml"):
         wr("themes/styles/" + _style, s)
 
+# ---------------------------------------------------------------- glass lists
+# Lists, file pickers and the terminal paint an opaque %background% of their
+# own on top of the wallpaper, so only the header strip looked like glass and
+# everything below it was flat black. Give them a translucent background so
+# the wallpaper shows through, which is the whole point of the theme.
+LIST_BG = "#050507A6"      # ~65% over the wallpaper, text stays readable
+sty = rd("resources/styles.xml")
+sty = sty.replace('<background color="%background%"', f'<background color="{LIST_BG}"')
+wr("resources/styles.xml", sty)
+
 # ---------------------------------------------------------------- accent
 a = rd("themes/accent.xml")
 a = re.sub(r'#ed6f02', ACCENT, a, flags=re.I).replace("#D86100", ACCENT_DARK).replace('value="Fox"', 'value="Noxis"')
