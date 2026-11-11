@@ -34,6 +34,31 @@ mount_part() { # name mountpoint
   return 1
 }
 
+SD=/mnt/nx/system_dlkm
+MODDIRS=""
+moddirs() {
+  [ -n "$MODDIRS" ] && return
+  for d in $D/lib/modules /vendor_dlkm/lib/modules $SD/lib/modules $SD/lib/modules/* /lib/modules $V/lib/modules; do
+    [ -f "$d/modules.dep" ] && MODDIRS="$MODDIRS $d"
+  done
+  log "module dirs:$MODDIRS"
+}
+findko() { for d in $MODDIRS; do f=$(find "$d" -name "$1.ko" 2>/dev/null | head -1); [ -n "$f" ] && { echo "$f"; return; }; done; }
+loaded() { grep -q "^$(echo "$1" | tr - _) " /proc/modules; }
+load_mod() { # name – loads its dependencies first
+  loaded "$1" && return 0
+  for d in $MODDIRS; do
+    line=$(grep -E "(^|/)$1\.ko:" "$d/modules.dep" 2>/dev/null | head -1)
+    [ -n "$line" ] && break
+  done
+  for dep in ${line#*:}; do
+    b=$(basename "$dep" .ko); [ "$b" = "$1" ] || load_mod "$b"
+  done
+  f=$(findko "$1")
+  [ -n "$f" ] || { log "! module $1.ko not found"; return 1; }
+  run insmod "$f"
+}
+
 mods_dir() { for d in $D/lib/modules /vendor_dlkm/lib/modules $V/lib/modules; do [ -f $d/modules.dep ] && { echo $d; return; }; done; }
 
 probe() {
@@ -45,7 +70,7 @@ probe() {
   M=$(mods_dir); log "modules dir: ${M:-none}"
   [ -n "$M" ] && run sh -c "ls $M | grep -iE 'cnss|wlan|qca|icnss|qrtr|rproc|ipc' "
   run ls $V/bin/cnss-daemon $V/bin/pd-mapper $V/bin/pm-service $V/bin/hw/wpa_supplicant $V/bin/qrtr-ns
-  run sh -c "ls $V/firmware/wlan/qca_cld/qca6750/ /vendor/firmware_mnt/image | grep -iE 'wpss|bdwlan|regdb|wlan|qca|\\.ini'"
+  run sh -c "find /vendor/firmware_mnt/image $V/firmware -iname '*wpss*' -o -iname 'bdwlan*' -o -iname 'regdb*' 2>/dev/null | head -30"
   run sh -c "grep -rhE 'cnss|wpss|wlan' $V/etc/init/*.rc $V/etc/init/hw/*.rc | head -60"
   run cat /sys/module/firmware_class/parameters/path
   run ls /sys/kernel/cnss /sys/bus/platform/drivers | head -5
@@ -58,22 +83,33 @@ up() {
   mount_part vendor $V || return 1
   mount_part vendor_dlkm $D
   mountpoint -q /vendor/firmware_mnt || mount -t vfat -o ro /dev/block/by-name/modem$SLOT /vendor/firmware_mnt 2>>$LOG
-  # firmware: the kernel also looks in this extra path (vendor partition firmware)
-  echo -n $V/firmware > /sys/module/firmware_class/parameters/path
+  # firmware: one merged folder (modem partition first, then vendor), the kernel loads from there
+  FW=/tmp/nxfw; mkdir -p $FW
+  for src in /vendor/firmware_mnt/image $V/firmware /vendor/firmware; do
+    [ -d "$src" ] || continue
+    for e in "$src"/*; do b=$(basename "$e"); [ -e "$FW/$b" ] || ln -s "$e" "$FW/$b"; done
+  done
+  echo -n $FW > /sys/module/firmware_class/parameters/path
+  w=$(find /vendor/firmware_mnt/image $V/firmware -name 'wpss.mdt' 2>/dev/null | head -3 | tr '\n' ' ')
+  log "wpss.mdt found at: ${w:-NOWHERE}"
+  # the remoteproc asks for qca6750/wpss.mdt – link it if the file sits elsewhere
+  if [ ! -e $FW/qca6750/wpss.mdt ] && [ -n "$w" ]; then
+    wd=$(dirname ${w%% *}); rm -f $FW/qca6750; ln -s "$wd" $FW/qca6750
+  fi
   export LD_LIBRARY_PATH=$V/lib64:/vendor/lib64:/system/lib64
   # 1) kernel modules (dependencies come from modules.dep)
-  M=$(mods_dir)
-  if [ -n "$M" ]; then
-    for m in qrtr qrtr-smd rproc_qcom_common cnss_prealloc cnss_utils cnss_nl wlan_firmware_service cnss_plat_ipc_qmi_svc icnss2 qca_cld3_qca6750; do
-      grep -q "^${m//-/_} " /proc/modules && continue
-      run modprobe -d "$M" "$m" || run insmod "$M/$m.ko"
-    done
-  else log "! no modules.dep found"; fi
+  mount_part system_dlkm $SD
+  moddirs
+  # cfg80211 (wireless core) lives in system_dlkm on GKI kernels
+  for m in rfkill cfg80211 qrtr qrtr-smd rproc_qcom_common cnss_prealloc cnss_utils cnss_nl wlan_firmware_service cnss_plat_ipc_qmi_svc icnss2; do
+    load_mod $m
+  done
   # 2) wireless processor (WPSS) remoteproc
   for rp in /sys/class/remoteproc/*; do
     n=$(cat $rp/name 2>/dev/null)
     case "$n" in *wpss*) [ "$(cat $rp/state)" = running ] || run sh -c "echo start > $rp/state"; sleep 2; log "$n: $(cat $rp/state)";; esac
   done
+  load_mod qca_cld3_qca6750
   # 3) Qualcomm helper daemons from the vendor partition
   pidof pd-mapper >/dev/null || { run sh -c "$V/bin/pd-mapper >>$LOG 2>&1 &"; }
   pidof pm-service >/dev/null || { run sh -c "$V/bin/pm-service >>$LOG 2>&1 &"; }
