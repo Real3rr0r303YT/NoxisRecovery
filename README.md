@@ -4,6 +4,10 @@
 <p align="center">A custom recovery for the <b>Nothing Phone (3a)</b> (<code>asteroids</code>, SM7635), with a liquid-glass design.<br>
 Part of <a href="https://github.com/Real3rr0r303YT/NoxisOS">Noxis OS</a> and <a href="https://github.com/Real3rr0r303YT/NoxisLinux">Noxis Linux</a>.</p>
 
+<p align="center"><b>Made by <a href="https://www.tiktok.com/@3rr0r303yt">3rr0r303YT on TikTok</a></b><br>
+<a href="LICENSE"><img src="https://img.shields.io/badge/License-GNU%20GPL%20v3-blue.svg"></a>
+<a href="https://buymeacoffee.com/3rr0r303YT"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-%E2%98%95-yellow.svg"></a></p>
+
 <p align="center"><img src="docs/img/overview.png" width="100%"></p>
 
 > **Status: design phase.** The screens above are design mockups. There is no `recovery.img` release yet.
@@ -44,6 +48,10 @@ Do not relock the bootloader with a custom recovery or ROM installed.
 ## Support
 
 If you like the project: ☕ **[Buy me a coffee](https://buymeacoffee.com/3rr0r303YT)**
+
+## Credits
+
+Made by **[3rr0r303YT on TikTok](https://www.tiktok.com/@3rr0r303yt)** · GitHub [Real3rr0r303YT](https://github.com/Real3rr0r303YT)
 
 ## License
 
