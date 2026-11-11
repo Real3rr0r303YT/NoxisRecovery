@@ -76,6 +76,13 @@ a = rd("themes/accent.xml")
 a = re.sub(r'#ed6f02', ACCENT, a, flags=re.I).replace("#D86100", ACCENT_DARK).replace('value="Fox"', 'value="Noxis"')
 wr("themes/accent.xml", a)
 
+# the style presets in the customization menu hard-code their own accent, so
+# the "Fox" preset repainted the recovery OrangeFox orange after the user
+# picked a style. Point its colours at the Noxis accent.
+cu = rd("pages/customization.xml")
+cu = cu.replace("#D86100", ACCENT).replace("#ED6F02", ACCENT_DARK).replace("#ed6f02", ACCENT_DARK)
+wr("pages/customization.xml", cu)
+
 # ---------------------------------------------------------------- fonts: Inter Display everywhere
 f = rd("themes/font.xml")
 f = re.sub(r'filename="(?:Roboto|GoogleSans)-(Regular|Medium)\.ttf"', r'filename="InterDisplay-\1.ttf"', f)
