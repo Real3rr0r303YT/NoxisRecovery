@@ -110,6 +110,8 @@ up() {
     case "$n" in *wpss*) [ "$(cat $rp/state)" = running ] || run sh -c "echo start > $rp/state"; sleep 2; log "$n: $(cat $rp/state)";; esac
   done
   load_mod qca_cld3_qca6750
+  # the vendor init normally triggers the WLAN host driver start here
+  for f in /sys/kernel/boot_wlan/boot_wlan; do [ -e $f ] && { run sh -c "echo 1 > $f"; log "boot_wlan triggered"; }; done
   # 3) Qualcomm helper daemons from the vendor partition
   pidof pd-mapper >/dev/null || { run sh -c "$V/bin/pd-mapper >>$LOG 2>&1 &"; }
   pidof pm-service >/dev/null || { run sh -c "$V/bin/pm-service >>$LOG 2>&1 &"; }
