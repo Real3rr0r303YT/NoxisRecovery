@@ -1,0 +1,68 @@
+name: Noxis Recovery – glass theme
+
+# Takes the recovery built from source (BASE_TAG) and repacks it with the Noxis
+# liquid-glass theme and tools. Minutes instead of hours.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['noxis/theme/**', 'noxis/repack.sh', 'noxis/root/**', '.github/workflows/theme.yml']
+
+permissions:
+  contents: write
+
+env:
+  BASE_TAG: v0.1-build2
+  VERSION: v0.3
+
+jobs:
+  repack:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: magiskboot
+        run: |
+          url=$(gh api repos/topjohnwu/Magisk/releases/latest --jq '.assets[]|select(.name|endswith(".apk"))|.browser_download_url' | head -1)
+          curl -sSL "$url" -o magisk.apk
+          unzip -p magisk.apk lib/x86_64/libmagiskboot.so > magiskboot
+          sudo install -m755 magiskboot /usr/local/bin/magiskboot
+      - name: Base images
+        run: gh release download "$BASE_TAG" -p 'noxis-recovery-6.?.img' -D base
+      - name: Repack with the Noxis theme
+        run: |
+          mkdir -p dist
+          for v in 6.1 6.6; do
+            ./noxis/repack.sh "base/noxis-recovery-$v.img" "dist/noxis-recovery-$VERSION-$v.img"
+          done
+          cd dist && sha256sum *.img > SHA256SUMS && cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.VERSION }}-glass${{ github.run_number }}
+          name: Noxis Recovery ${{ env.VERSION }} – liquid glass (build ${{ github.run_number }})
+          prerelease: true
+          files: |
+            dist/*.img
+            dist/SHA256SUMS
+          body: |
+            **Noxis Recovery v0.3 – liquid-glass theme** on top of the source build `${{ env.BASE_TAG }}` (OrangeFox 14.1).
+
+            - Blurred red/violet wallpaper with the Noxis emblem
+            - Frosted-glass cards, lists, nav bar and buttons
+            - Noxis red accent, white text, Inter Display font
+            - Noxis splash + logo, `noxis-rollback` tool
+
+            | File | For |
+            |---|---|
+            | `noxis-recovery-v0.3-6.1.img` | stock **Nothing OS** |
+            | `noxis-recovery-v0.3-6.6.img` | custom ROMs |
+
+            ```
+            adb reboot bootloader
+            fastboot flash recovery_a noxis-recovery-v0.3-6.1.img
+            fastboot reboot recovery
+            ```
+            If it does not start, flash `v0.1-build2` again.
+
+            Made by 3rr0r303YT on TikTok · GNU GPL v3
