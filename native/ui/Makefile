@@ -6,7 +6,7 @@ PKGS     = cairo libdrm
 CFLAGS  += -O2 -Wall -Wextra -Wno-unused-parameter -std=c11 $(shell pkg-config --cflags $(PKGS))
 LDLIBS  += $(shell pkg-config --libs $(PKGS)) -lm
 
-SRC = main.c drm.c draw.c input.c icons.c screen_home.c
+SRC = main.c drm.c draw.c input.c icons.c device.c ops.c screen_home.c
 OBJ = $(SRC:.c=.o)
 BIN = noxis-ui
 
@@ -26,7 +26,12 @@ preview:
 	      $(shell pkg-config --libs cairo) -lm
 	./noxis-ui-preview --png preview.png
 
-clean:
-	rm -f $(OBJ) $(BIN) noxis-ui-preview preview.png
+# The write paths run against temp files, never a real partition.
+test:
+	$(CC) -O2 -Wall -std=c11 test_ops.c ops.c device.c -o test_ops
+	./test_ops
 
-.PHONY: all clean preview
+clean:
+	rm -f $(OBJ) $(BIN) noxis-ui-preview preview.png test_ops
+
+.PHONY: all clean preview test
