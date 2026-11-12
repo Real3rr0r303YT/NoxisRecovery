@@ -1,0 +1,94 @@
+#!/bin/sh
+# Noxis Recovery (native) - first stage
+#
+# Brings up the device far enough to draw: mounts the pseudo filesystems, loads
+# the display, touch and storage modules, then hands over to the UI.
+#
+# Kernel parameters:
+#   noxis.rec.debug=1   stay in a shell instead of starting the UI
+#   noxis.rec.console=1 keep the kernel log on screen (UI off)
+
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+CMDLINE=${NOXIS_T_CMDLINE:-/proc/cmdline}
+MODDIR=${NOXIS_T_MODDIR:-/lib/modules}
+
+log() { echo "noxis-rec: $*" > /dev/kmsg 2>/dev/null || echo "noxis-rec: $*"; }
+
+cmdline_get() {   # $1 = key -> value on stdout
+  for a in $(cat "$CMDLINE" 2>/dev/null); do
+    case "$a" in "$1"=*) echo "${a#*=}"; return 0 ;; esac
+  done
+  return 1
+}
+
+early_mounts() {
+  mkdir -p /proc /sys /dev /tmp /run
+  mount -t proc     proc     /proc    2>/dev/null
+  mount -t sysfs    sysfs    /sys     2>/dev/null
+  mount -t devtmpfs devtmpfs /dev     2>/dev/null
+  mkdir -p /dev/pts && mount -t devpts devpts /dev/pts 2>/dev/null
+  mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run  2>/dev/null
+  mount -t configfs configfs /sys/kernel/config       2>/dev/null
+}
+
+# Modules in dependency order. The display stack has to come up before the UI
+# can open a DRM device, and touch before it can take input.
+MODULES_DISPLAY="msm_drm sync_fence msm_hw_fence mmrm_driver"
+MODULES_INPUT="nt36xxx-i2c goodix_ts focaltech_fts"
+MODULES_STORAGE="ufs_qcom phy_qcom_ufs"
+
+load_group() {   # $1 = label, $2 = module list
+  local m found=0
+  for m in $2; do
+    if modprobe "$m" 2>/dev/null; then found=$((found + 1)); fi
+  done
+  log "$1: $found/$(echo $2 | wc -w) modules loaded"
+}
+
+load_modules() {
+  [ -d "$MODDIR" ] || { log "no $MODDIR - kernel without modules?"; return 1; }
+  depmod -a 2>/dev/null
+  load_group display "$MODULES_DISPLAY"
+  load_group input   "$MODULES_INPUT"
+  load_group storage "$MODULES_STORAGE"
+}
+
+wait_for_drm() {   # $1 = seconds
+  local i=0
+  while [ "$i" -lt "${1:-10}" ]; do
+    [ -e /dev/dri/card0 ] && { log "DRM ready after ${i}s"; return 0; }
+    i=$((i + 1)); sleep 1
+  done
+  log "no /dev/dri/card0 after ${1:-10}s"
+  return 1
+}
+
+# A recovery that cannot draw is still a recovery: drop to a shell on the
+# console rather than leaving a black screen with no way in.
+fallback() {
+  log "ERROR: $* - console shell"
+  setsid sh -c 'exec sh </dev/console >/dev/console 2>&1' || exec sh
+}
+
+# ---------------------------------------------------------------- main
+[ "${NOXIS_T_LIB:-0}" = 1 ] && return 0 2>/dev/null   # tests source this file
+
+early_mounts
+log "Noxis Recovery (native) starting"
+load_modules
+
+if [ "$(cmdline_get noxis.rec.console)" = 1 ]; then
+  log "noxis.rec.console=1 - UI disabled"
+  exec sh
+fi
+
+if [ "$(cmdline_get noxis.rec.debug)" = 1 ]; then
+  log "noxis.rec.debug=1 - staying in the shell"
+  exec sh
+fi
+
+wait_for_drm 10 || fallback "display did not come up"
+[ -x /usr/bin/noxis-ui ] || fallback "/usr/bin/noxis-ui missing"
+
+log "starting UI"
+exec /usr/bin/noxis-ui
