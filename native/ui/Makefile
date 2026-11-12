@@ -6,7 +6,7 @@ PKGS     = cairo libdrm
 CFLAGS  += -O2 -Wall -Wextra -Wno-unused-parameter -std=c11 $(shell pkg-config --cflags $(PKGS))
 LDLIBS  += $(shell pkg-config --libs $(PKGS)) -lm
 
-SRC = main.c drm.c draw.c input.c screen_home.c
+SRC = main.c drm.c draw.c input.c icons.c screen_home.c
 OBJ = $(SRC:.c=.o)
 BIN = noxis-ui
 
@@ -22,7 +22,7 @@ $(BIN): $(OBJ)
 # Needs only cairo, so it runs on any desktop without libdrm or a device.
 preview:
 	$(CC) -O2 -std=c11 -DNX_NO_DRM $(shell pkg-config --cflags cairo) \
-	      main.c draw.c screen_home.c -o noxis-ui-preview \
+	      main.c draw.c icons.c screen_home.c -o noxis-ui-preview \
 	      $(shell pkg-config --libs cairo) -lm
 	./noxis-ui-preview --png preview.png
 

@@ -7,6 +7,7 @@
  * Made by 3rr0r303YT on TikTok - GNU GPL v3
  */
 #include "screens.h"
+#include "icons.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -16,19 +17,23 @@ static const struct {
     const char *title;
     const char *sub;
     int         accent;     /* drawn in red rather than glass */
+    nx_icon_id  icon;
 } TILES[] = {
-    { "Installieren",   "ZIP · IMG · OTA",      0 },
-    { "Wipe",           "Cache · Data · Format",0 },
-    { "Backup",         "Partitionen sichern",  0 },
-    { "Wiederherstellen","aus Backup",          0 },
-    { "Rollback",       "zurück zu altem OS",   1 },
-    { "Browser",        "WLAN · Downloads",     0 },
-    { "Dateien",        "Manager · MTP · ADB",  0 },
-    { "Terminal",       "Shell · Logs",         0 },
+    { "Installieren",   "ZIP · IMG · OTA",      0, NX_ICON_INSTALL  },
+    { "Wipe",           "Cache · Data · Format",0, NX_ICON_WIPE     },
+    { "Backup",         "Partitionen sichern",  0, NX_ICON_BACKUP   },
+    { "Wiederherstellen","aus Backup",          0, NX_ICON_RESTORE  },
+    { "Rollback",       "zurück zu altem OS",   1, NX_ICON_ROLLBACK },
+    { "Browser",        "WLAN · Downloads",     0, NX_ICON_BROWSER  },
+    { "Dateien",        "Manager · MTP · ADB",  0, NX_ICON_FILES    },
+    { "Terminal",       "Shell · Logs",         0, NX_ICON_TERMINAL },
 };
 #define TILE_COUNT ((int)(sizeof(TILES) / sizeof(TILES[0])))
 
 static const char *NAV[] = { "Start", "Dateien", "Einstellungen", "Neustart" };
+static const nx_icon_id NAV_ICON[] = {
+    NX_ICON_HOME, NX_ICON_FILES, NX_ICON_GEAR, NX_ICON_POWER
+};
 #define NAV_COUNT 4
 
 void nx_home_layout(nx_home *h, int w, int h_px)
@@ -120,6 +125,8 @@ void nx_home_draw(cairo_t *cr, const nx_home *h, const nx_state *st)
 
         nx_shadow(cr, t->x, t->y, t->w, t->h, NX_R_TILE, 8);
         nx_card(cr, t->x, t->y, t->w, t->h, NX_R_TILE, fill, 1);
+        nx_icon(cr, TILES[i].icon, t->x + 28, t->y + 30, 52,
+                TILES[i].accent ? NX_TEXT : NX_TEXT_STRONG);
         nx_text(cr, TILES[i].title, t->x + 28, t->y + t->h - 62,
                 NX_FONT, NX_SZ_HEAD, NX_TEXT, 1);
         nx_text(cr, TILES[i].sub, t->x + 28, t->y + t->h - 26,
@@ -136,10 +143,10 @@ void nx_home_draw(cairo_t *cr, const nx_home *h, const nx_state *st)
             double pw = it->w - 36, ph = n->h - 36;
             nx_pill(cr, cx - pw / 2, n->y + 18, pw, ph, NX_ACCENT);
         }
-        nx_text_centered(cr, NAV[i], cx, n->y + n->h / 2.0 + 10,
-                         NX_FONT, NX_SZ_LABEL,
-                         i == st->nav_active ? NX_TEXT : NX_TEXT_MID,
-                         i == st->nav_active);
+        nx_rgba nc = (i == st->nav_active) ? NX_TEXT : NX_TEXT_MID;
+        nx_icon(cr, NAV_ICON[i], cx - 19, n->y + 32, 38, nc);
+        nx_text_centered(cr, NAV[i], cx, n->y + n->h - 34,
+                         NX_FONT, NX_SZ_SMALL, nc, i == st->nav_active);
     }
 }
 
